@@ -34,17 +34,22 @@ matplotlib.use('Agg')  # Use non-interactive backend
 from historical_data_handler import HistoricalDataHandler
 from divergence_notifier import DivergenceNotifier
 from dotenv import load_dotenv
+from config_loader import get_config
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
+# Load configuration
+config = get_config()
+
+# Configure logging from config
+log_config = config.get_logging_config()
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=getattr(logging, log_config.get('level', 'INFO')),
+    format=log_config.get('format', '%(asctime)s - %(levelname)s - %(message)s'),
     handlers=[
-        logging.FileHandler("divergence_scanner.log"),
-        logging.StreamHandler()
+        logging.FileHandler(log_config.get('files', {}).get('scanner', 'divergence_scanner.log')),
+        logging.StreamHandler() if log_config.get('console_output', True) else None
     ]
 )
 logger = logging.getLogger(__name__)
@@ -54,10 +59,10 @@ CHARTS_DIR = os.getenv("CHARTS_DIR", "/Users/isaac/Desktop/Projects/Divergence_S
 os.makedirs(CHARTS_DIR, exist_ok=True)
 print(f"Charts will be saved to: {CHARTS_DIR}")
 
-
-# Scanning parameters
-BATCH_SIZE = 200  # Process symbols in batches to avoid rate limiting
-MAX_WORKERS = 100  # Maximum number of parallel workers for scanning
+# Scanning parameters from config
+scanning_config = config.get_scanning_config()
+BATCH_SIZE = scanning_config.get('batch_size', 200)  # Process symbols in batches to avoid rate limiting
+MAX_WORKERS = scanning_config.get('max_workers', 100)  # Maximum number of parallel workers for scanning
 
 def get_next_interval(frequency=1):
     """
@@ -79,17 +84,18 @@ def get_next_interval(frequency=1):
         next_time += timedelta(minutes=frequency)
     return (next_time - now).total_seconds()
 
-# S&P 500 symbols - static list, can be replaced with dynamic fetching
-SP500_SYMBOLS = [
+# Load symbols configuration
+symbols_config = config.get_symbols_config()
+SP500_SYMBOLS = symbols_config.get('sp500_top_50', [
     "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "GOOG", "TSLA", "BRK.B", "UNH", 
     "LLY", "JPM", "XOM", "V", "AVGO", "PG", "MA", "HD", "COST", "MRK", 
     "CVX", "ABBV", "PEP", "KO", "ADBE", "WMT", "BAC", "CRM", "MCD", "ABT", 
     "ACN", "LIN", "CSCO", "AMD", "TMO", "CMCSA", "ORCL", "NKE", "DHR", "PFE", 
     "INTC", "PM", "NFLX", "WFC", "TXN", "VZ", "COP", "IBM", "QCOM", "UPS"
-]  # Top 50 companies in S&P 500 by market cap
+])
 
 # Include futures symbols for comprehensive market analysis
-FUTURES_SYMBOLS = ['/ES', '/NQ', '/RTY', '/YM', '/GC', '/CL']
+FUTURES_SYMBOLS = symbols_config.get('futures', ['/ES', '/NQ', '/RTY', '/YM', '/GC', '/CL'])
 
 # Combine both lists
 SYMBOLS = FUTURES_SYMBOLS + SP500_SYMBOLS
@@ -100,8 +106,14 @@ def get_sp500_symbols():
     Dynamically fetch S&P 500 symbols from Wikipedia.
     Returns a list of symbols.
     """
+    dynamic_config = symbols_config.get('dynamic_sp500', {})
+    
+    if not dynamic_config.get('enabled', True):
+        logger.info("Dynamic S&P 500 fetching is disabled, using static list")
+        return SP500_SYMBOLS
+    
     try:
-        url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+        url = dynamic_config.get('url', "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
         tables = pd.read_html(url)
         sp500_table = tables[0]
         symbols = sp500_table['Symbol'].tolist()
@@ -112,51 +124,68 @@ def get_sp500_symbols():
     except Exception as e:
         logger.error(f"Error fetching S&P 500 symbols: {str(e)}")
         # Fallback to static list if unable to fetch
-        logger.info(f"Using static list of {len(SP500_SYMBOLS)} top S&P 500 symbols")
-        return SP500_SYMBOLS
+        if dynamic_config.get('fallback_to_static', True):
+            logger.info(f"Using static list of {len(SP500_SYMBOLS)} top S&P 500 symbols")
+            return SP500_SYMBOLS
+        else:
+            return []
 
-# Market Hours (times in Pacific Time)
+# Load market configuration
+market_config = config.get_market_config()
 MARKET_HOURS = {
-    "FUTURES_OPEN": "15:00",  # 3:00 PM PT Sunday
-    "FUTURES_CLOSE": "13:00"  # 1:00 PM PT Friday
+    "FUTURES_OPEN": market_config.get('hours', {}).get('futures_open', '15:00'),
+    "FUTURES_CLOSE": market_config.get('hours', {}).get('futures_close', '13:00')
 }
 
-# Market data timeframes
-TIMEFRAMES = ['1min', '5min', '15min', '1hour', '4hour']
+# Market data timeframes from config
+TIMEFRAMES = scanning_config.get('timeframes', ['1min', '5min', '15min', '1hour', '4hour'])
 
-# Indicator parameters
-RSI_PERIOD = 14
-ADV_PERIOD = 14
-MACD_FAST = 12
-MACD_SLOW = 26
-MACD_SIGNAL = 9
-EMA_SHORT = 9
-EMA_MEDIUM = 21
-EMA_LONG = 50
-BOLLINGER_PERIOD = 20
-BOLLINGER_STD = 2
-ATR_PERIOD = 14
+# Load indicator parameters from config
+indicators_config = config.get_indicators_config()
+RSI_PERIOD = indicators_config.get('rsi', {}).get('period', 14)
+ADV_PERIOD = indicators_config.get('ad_volume', {}).get('period', 14)
+MACD_FAST = indicators_config.get('macd', {}).get('fast_period', 12)
+MACD_SLOW = indicators_config.get('macd', {}).get('slow_period', 26)
+MACD_SIGNAL = indicators_config.get('macd', {}).get('signal_period', 9)
+EMA_SHORT = indicators_config.get('ema', {}).get('short_period', 9)
+EMA_MEDIUM = indicators_config.get('ema', {}).get('medium_period', 21)
+EMA_LONG = indicators_config.get('ema', {}).get('long_period', 50)
+BOLLINGER_PERIOD = indicators_config.get('bollinger', {}).get('period', 20)
+BOLLINGER_STD = indicators_config.get('bollinger', {}).get('std_dev', 2)
+ATR_PERIOD = indicators_config.get('atr', {}).get('period', 14)
 
-# Divergence parameters
-SWING_LOOKBACK = 10
-DIVERGENCE_THRESHOLD = 0.05
-MIN_SWING_PERCENT = 0.2
+# Load divergence parameters from config
+divergence_config = config.get_divergence_config()
+SWING_LOOKBACK = divergence_config.get('swing_lookback', 10)
+DIVERGENCE_THRESHOLD = divergence_config.get('threshold', 0.05)
+MIN_SWING_PERCENT = divergence_config.get('min_swing_percent', 0.2)
 
 # Signal cooldown to prevent excessive alerts
-COOLDOWN_PERIOD = 0  # 4 hours
+COOLDOWN_PERIOD = scanning_config.get('cooldown_period', 0)
 last_signal_time = {}
 
-# Define market sessions (times in UTC)
+# Define market sessions from config
+market_sessions_config = market_config.get('sessions', {})
 MARKET_SESSIONS = {
-    "Asian": {"start": "21:00", "end": "03:00"},
-    "European": {"start": "07:00", "end": "16:00"},
-    "US": {"start": "13:30", "end": "20:00"}
+    "Asian": {
+        "start": market_sessions_config.get('asian', {}).get('start', '21:00'),
+        "end": market_sessions_config.get('asian', {}).get('end', '03:00')
+    },
+    "European": {
+        "start": market_sessions_config.get('european', {}).get('start', '07:00'),
+        "end": market_sessions_config.get('european', {}).get('end', '16:00')
+    },
+    "US": {
+        "start": market_sessions_config.get('us', {}).get('start', '13:30'),
+        "end": market_sessions_config.get('us', {}).get('end', '20:00')
+    }
 }
 
-# Trading strategy parameters
-RISK_REWARD_RATIO = 2.5  # Minimum reward:risk ratio
-MAX_RISK_PERCENT = 1.0   # Maximum risk percentage per trade
-STOP_LOSS_ATR_MULT = 1.5 # Stop loss multiplier based on ATR
+# Load trading strategy parameters from config
+trading_config = config.get_trading_config()
+RISK_REWARD_RATIO = trading_config.get('risk_reward_ratio', 2.5)
+MAX_RISK_PERCENT = trading_config.get('max_risk_percent', 1.0)
+STOP_LOSS_ATR_MULT = trading_config.get('stop_loss_atr_multiplier', 1.5)
 
 class DivergenceScanner:
     def __init__(self):

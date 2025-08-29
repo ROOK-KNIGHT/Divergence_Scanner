@@ -1,0 +1,278 @@
+# Divergence Scanner Configuration File
+# This file contains all configurable parameters for the divergence scanner
+
+# =============================================================================
+# SCANNING PARAMETERS
+# =============================================================================
+scanning:
+  # Batch processing settings
+  batch_size: 200  # Process symbols in batches to avoid rate limiting
+  max_workers: 100  # Maximum number of parallel workers for scanning
+  
+  # Signal cooldown to prevent excessive alerts (in seconds)
+  cooldown_period: 0  # 0 = no cooldown, 14400 = 4 hours
+  
+  # Market data timeframes
+  timeframes:
+    - "1min"
+    - "5min"
+    - "15min"
+    - "1hour"
+    - "4hour"
+  
+  # Default data fetching parameters
+  default_data:
+    period_type: "day"
+    period: 10
+    frequency_type: "minute"
+    frequency: 5
+    need_extended_hours: true
+
+# =============================================================================
+# TECHNICAL INDICATORS PARAMETERS
+# =============================================================================
+indicators:
+  # RSI settings
+  rsi:
+    period: 14
+    overbought: 70
+    oversold: 30
+    
+  # AD Volume settings
+  ad_volume:
+    period: 14
+    
+  # MACD settings
+  macd:
+    fast_period: 12
+    slow_period: 26
+    signal_period: 9
+    
+  # EMA settings
+  ema:
+    short_period: 9
+    medium_period: 21
+    long_period: 50
+    
+  # Bollinger Bands settings
+  bollinger:
+    period: 20
+    std_dev: 2
+    
+  # ATR settings
+  atr:
+    period: 14
+    
+  # ADX settings (trend strength)
+  adx:
+    period: 14
+    strong_trend: 25
+    moderate_trend: 15
+    
+  # Momentum settings
+  momentum:
+    period: 10
+
+# =============================================================================
+# DIVERGENCE DETECTION PARAMETERS
+# =============================================================================
+divergence:
+  # Swing detection settings
+  swing_lookback: 10  # Number of periods to look back for swing detection
+  min_swing_points: 5  # Minimum points for swing detection
+  min_swing_percent: 0.2  # Minimum percentage change for significant swings
+  
+  # Divergence threshold
+  threshold: 0.05  # 5% threshold for divergence detection
+  
+  # Signal age settings (for trade signals)
+  max_signal_age_minutes: 5  # Maximum age for valid trade signals
+  
+  # Tolerance for "equal" swings (percentage)
+  equal_tolerance: 1.0  # 1% tolerance for equal swing determination
+
+# =============================================================================
+# TRADING STRATEGY PARAMETERS
+# =============================================================================
+trading:
+  # Risk management
+  risk_reward_ratio: 2.5  # Minimum reward:risk ratio
+  max_risk_percent: 1.0   # Maximum risk percentage per trade
+  stop_loss_atr_multiplier: 1.5  # Stop loss multiplier based on ATR
+  
+  # Signal confidence levels
+  confidence_levels:
+    high: ["strong"]
+    medium: ["medium", "weak"]
+    low: ["hidden"]
+
+# =============================================================================
+# MARKET HOURS AND SESSIONS
+# =============================================================================
+market:
+  # Market Hours (times in Pacific Time)
+  hours:
+    futures_open: "15:00"  # 3:00 PM PT Sunday
+    futures_close: "13:00"  # 1:00 PM PT Friday
+    
+  # Market sessions (times in UTC)
+  sessions:
+    asian:
+      start: "21:00"
+      end: "03:00"
+    european:
+      start: "07:00"
+      end: "16:00"
+    us:
+      start: "13:30"
+      end: "20:00"
+
+# =============================================================================
+# SYMBOLS CONFIGURATION
+# =============================================================================
+symbols:
+  # Futures symbols for comprehensive market analysis
+  futures:
+    - "/ES"   # S&P 500 E-mini
+    - "/NQ"   # NASDAQ 100 E-mini
+    - "/RTY"  # Russell 2000 E-mini
+    - "/YM"   # Dow Jones E-mini
+    - "/GC"   # Gold
+    - "/CL"   # Crude Oil
+    
+  # Top S&P 500 symbols (fallback list if dynamic fetch fails)
+  sp500_top_50:
+    - "AAPL"
+    - "MSFT"
+    - "AMZN"
+    - "NVDA"
+    - "GOOGL"
+    - "META"
+    - "GOOG"
+    - "TSLA"
+    - "BRK.B"
+    - "UNH"
+    - "LLY"
+    - "JPM"
+    - "XOM"
+    - "V"
+    - "AVGO"
+    - "PG"
+    - "MA"
+    - "HD"
+    - "COST"
+    - "MRK"
+    - "CVX"
+    - "ABBV"
+    - "PEP"
+    - "KO"
+    - "ADBE"
+    - "WMT"
+    - "BAC"
+    - "CRM"
+    - "MCD"
+    - "ABT"
+    - "ACN"
+    - "LIN"
+    - "CSCO"
+    - "AMD"
+    - "TMO"
+    - "CMCSA"
+    - "ORCL"
+    - "NKE"
+    - "DHR"
+    - "PFE"
+    - "INTC"
+    - "PM"
+    - "NFLX"
+    - "WFC"
+    - "TXN"
+    - "VZ"
+    - "COP"
+    - "IBM"
+    - "QCOM"
+    - "UPS"
+    
+  # Dynamic S&P 500 fetching settings
+  dynamic_sp500:
+    enabled: true
+    url: "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
+    fallback_to_static: true
+
+# =============================================================================
+# NOTIFICATION SETTINGS
+# =============================================================================
+notifications:
+  discord:
+    # Chart settings
+    chart_width: 14
+    chart_height: 10
+    chart_dpi: 120
+    
+    # Embed settings
+    embed_color: 242424  # Dark gray color
+    
+    # Chart generation settings
+    chart_bars_before: 30  # Bars to show before divergence
+    chart_bars_after: 30   # Bars to show after divergence
+    
+    # Volume MA period for charts
+    volume_ma_period: 20
+
+# =============================================================================
+# LOGGING CONFIGURATION
+# =============================================================================
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  format: "%(asctime)s - %(levelname)s - %(message)s"
+  files:
+    scanner: "divergence_scanner.log"
+    notifier: "divergence_notifier.log"
+  console_output: true
+
+# =============================================================================
+# API SETTINGS
+# =============================================================================
+api:
+  # Request settings
+  timeout: 10  # Request timeout in seconds
+  max_retries: 5  # Maximum number of retries
+  retry_delay: 2  # Initial retry delay in seconds
+  exponential_backoff: true  # Use exponential backoff for retries
+  
+  # Rate limiting
+  rate_limit_delay: 60  # Delay when rate limited (seconds)
+  
+  # Schwab API URLs (rarely need to change)
+  schwab:
+    base_url: "https://api.schwabapi.com"
+    auth_url: "https://api.schwabapi.com/v1/oauth/authorize"
+    token_url: "https://api.schwabapi.com/v1/oauth/token"
+    market_data_url: "https://api.schwabapi.com/marketdata/v1"
+    trader_url: "https://api.schwabapi.com/trader/v1"
+
+# =============================================================================
+# PERFORMANCE SETTINGS
+# =============================================================================
+performance:
+  # Memory management
+  max_dataframe_size: 10000  # Maximum rows in dataframes
+  cleanup_interval: 3600  # Cleanup interval in seconds (1 hour)
+  
+  # Processing optimization
+  use_parallel_processing: true
+  chunk_size: 50  # Size of chunks for parallel processing
+  
+  # Data caching
+  cache_historical_data: false  # Whether to cache historical data
+  cache_duration: 300  # Cache duration in seconds (5 minutes)
+
+# =============================================================================
+# DEVELOPMENT/DEBUG SETTINGS
+# =============================================================================
+debug:
+  enabled: false
+  verbose_logging: false
+  save_debug_charts: false
+  print_dataframe_info: false
+  track_performance: false
