@@ -4,12 +4,23 @@ import pandas as pd
 import time
 from connection_manager import ensure_valid_tokens
 from datetime import datetime
+from config_loader import get_config
 
 class HistoricalDataHandler:
     def __init__(self):
         """
         Initialize the HistoricalDataHandler.
         """
+        # Load configuration
+        self.config = get_config()
+        self.api_config = self.config.get_api_config()
+        
+        # Get API settings from configuration
+        self.max_retries = self.api_config.get('max_retries', 5)
+        self.retry_delay = self.api_config.get('retry_delay', 2)
+        self.rate_limit_delay = self.api_config.get('rate_limit_delay', 60)
+        self.base_url = self.api_config.get('base_url', 'https://api.schwabapi.com')
+        
         # print(f"DEBUG: Initialized HistoricalDataHandler. Instance ID: {id(self)}")
 
     def get_historical_data(self, symbol, periodType, period, frequencyType, freq, startDate=None, endDate=None, needExtendedHoursData=True):
@@ -19,8 +30,9 @@ class HistoricalDataHandler:
     def fetch_historical_data(self, symbol, periodType, period, frequencyType, freq, startDate=None, endDate=None, needExtendedHoursData=True):
         # print(f"DEBUG: [HistoricalDataHandler] fetch_historical_data called. Instance ID: {id(self)}")
         
-        max_retries = 5  # Number of retries before giving up
-        retry_delay = 2  # Initial retry delay in seconds
+        # Use configured retry settings
+        max_retries = self.max_retries
+        retry_delay = self.retry_delay
 
         for attempt in range(max_retries):
             try:
@@ -65,7 +77,7 @@ class HistoricalDataHandler:
             "Accept": "application/json"
         }
 
-        url = f"https://api.schwabapi.com/marketdata/v1/pricehistory?symbol={symbol}&periodType={periodType}&period={period}&frequencyType={frequencyType}&frequency={freq}&needExtendedHoursData={str(needExtendedHoursData).lower()}"
+        url = f"{self.base_url}/marketdata/v1/pricehistory?symbol={symbol}&periodType={periodType}&period={period}&frequencyType={frequencyType}&frequency={freq}&needExtendedHoursData={str(needExtendedHoursData).lower()}"
 
         if startDate:
             url += f"&startDate={startDate}"
@@ -106,7 +118,7 @@ class HistoricalDataHandler:
                 ensure_valid_tokens(refresh=True)  # Force token refresh
             elif response.status_code == 429:
                 print("ERROR: Rate limit exceeded, retrying after delay.")
-                time.sleep(60)  # Wait for 60 seconds before retrying
+                time.sleep(self.rate_limit_delay)  # Wait for configured delay before retrying
             else:
                 raise
         except Exception as e:

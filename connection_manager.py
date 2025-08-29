@@ -9,11 +9,16 @@ import os
 from datetime import timedelta, datetime
 import time
 from dotenv import load_dotenv
+from config_loader import get_config
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Get configuration from environment variables
+# Load configuration
+config = get_config()
+api_config = config.get_api_config()
+
+# Get configuration from environment variables with config fallbacks
 APP_KEY = os.getenv("SCHWAB_APP_KEY")
 APP_SECRET = os.getenv("SCHWAB_APP_SECRET")
 REDIRECT_URI = os.getenv("SCHWAB_REDIRECT_URI")
@@ -23,8 +28,16 @@ TOKEN_FILE = os.getenv("SCHWAB_TOKEN_FILE")
 if not all([APP_KEY, APP_SECRET, REDIRECT_URI, TOKEN_FILE]):
     raise ValueError("Missing required Schwab API environment variables. Please check your .env file.")
 
-AUTH_URL = f"https://api.schwabapi.com/v1/oauth/authorize?response_type=code&client_id={APP_KEY}&redirect_uri={REDIRECT_URI}&scope=readonly"
-TOKEN_URL = "https://api.schwabapi.com/v1/oauth/token"
+# Use configured base URL
+BASE_URL = api_config.get('base_url', 'https://api.schwabapi.com')
+AUTH_URL = f"{BASE_URL}/v1/oauth/authorize?response_type=code&client_id={APP_KEY}&redirect_uri={REDIRECT_URI}&scope=readonly"
+TOKEN_URL = f"{BASE_URL}/v1/oauth/token"
+
+# Get retry and timeout settings from configuration
+MAX_RETRIES = api_config.get('max_retries', 5)
+RETRY_DELAY = api_config.get('retry_delay', 2)
+REQUEST_TIMEOUT = api_config.get('request_timeout', 10)
+RATE_LIMIT_DELAY = api_config.get('rate_limit_delay', 60)
 
 def save_tokens(tokens):
     # Calculate and save the expiration time as a string
@@ -148,38 +161,38 @@ def ensure_valid_tokens():
 
 
 def get_account_numbers(access_token):
-    url = "https://api.schwabapi.com/trader/v1/accounts/accountNumbers"
+    url = f"{BASE_URL}/trader/v1/accounts/accountNumbers"
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
-    retries = 5
+    retries = MAX_RETRIES
     for attempt in range(retries):
         try:
-            response = requests.get(url, headers=headers, timeout=10)  # 10 seconds timeout
+            response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             response.raise_for_status()  # Raise error for bad status codes
             return response.json()
         except requests.exceptions.ReadTimeout:
             print(f"Request timed out on attempt {attempt + 1}/{retries}. Retrying...")
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}, attempt {attempt + 1}/{retries}")
-        time.sleep(2 ** attempt)  # Exponential backoff
+        time.sleep(RETRY_DELAY ** attempt)  # Exponential backoff
 
     raise Exception(f"Failed to fetch account numbers after {retries} attempts")
 
 def get_account_details(access_token, account_number, field):
     #print(f"DEBUG : Fetching account details for account {account_number}...")
-    url = f"https://api.schwabapi.com/trader/v1/accounts/{account_number}?fields={field}"
+    url = f"{BASE_URL}/trader/v1/accounts/{account_number}?fields={field}"
 
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
-    response = requests.get(url, headers=headers)
+    response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
     if response.status_code == 200:
         return response.json()
     elif response.status_code == 429:
-        retry_after = response.headers.get("Retry-After")
+        retry_after = response.headers.get("Retry-After", RATE_LIMIT_DELAY)
         print(f"Rate limit exceeded. Retry after {retry_after} seconds.")
         return None
     else:
@@ -188,17 +201,17 @@ def get_account_details(access_token, account_number, field):
 
 def get_positions(access_token, account_number):
     """Get current positions for the specified account"""
-    url = f"https://api.schwabapi.com/trader/v1/accounts/{account_number}/positions"
+    url = f"{BASE_URL}/trader/v1/accounts/{account_number}/positions"
     
     headers = {
         "Authorization": f"Bearer {access_token}",
         "Accept": "application/json"
     }
     
-    retries = 3
+    retries = MAX_RETRIES
     for attempt in range(retries):
         try:
-            response = requests.get(url, headers=headers, timeout=10)
+            response = requests.get(url, headers=headers, timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 positions = response.json()
                 # Format the positions data
@@ -214,16 +227,16 @@ def get_positions(access_token, account_number):
                     })
                 return formatted_positions
             elif response.status_code == 429:
-                retry_after = int(response.headers.get("Retry-After", 60))
+                retry_after = int(response.headers.get("Retry-After", RATE_LIMIT_DELAY))
                 print(f"Rate limit exceeded. Waiting {retry_after} seconds...")
                 time.sleep(retry_after)
             else:
                 print(f"Failed to get positions. Status Code: {response.status_code}")
                 print(f"Response: {response.text}")
-                time.sleep(2 ** attempt)  # Exponential backoff
+                time.sleep(RETRY_DELAY ** attempt)  # Exponential backoff
         except requests.exceptions.RequestException as e:
             print(f"Request failed: {e}")
-            time.sleep(2 ** attempt)  # Exponential backoff
+            time.sleep(RETRY_DELAY ** attempt)  # Exponential backoff
     
     return None
 

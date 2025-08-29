@@ -6,23 +6,6 @@ import os
 import time
 import pandas as pd
 import numpy as np
-# import talib - Not needed for the notifier
-import base64
-import requests
-import json
-import urllib.parse
-import os
-import time
-import pandas as pd
-import numpy as np
-import base64
-import requests
-import json
-import urllib.parse
-import os
-import time
-import pandas as pd
-import numpy as np
 import talib
 from datetime import datetime, timedelta
 import logging
@@ -42,27 +25,30 @@ import glob
 import pickle
 from dotenv import load_dotenv
 from historical_data_handler import HistoricalDataHandler
+from config_loader import get_config
 
 # Load environment variables from .env file
 load_dotenv()
 
+# Load configuration
+config = get_config()
+
 # Configure logging
+logging_config = config.get_logging_config()
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=getattr(logging, logging_config.get('level', 'INFO').upper()),
+    format=logging_config.get('format', '%(asctime)s - %(levelname)s - %(message)s'),
     handlers=[
-        logging.FileHandler("divergence_notifier.log"),
+        logging.FileHandler(logging_config.get('file', "divergence_notifier.log")),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
-# Load environment variables from .env file
-load_dotenv()
-
-# Configuration - get from environment variables
-CHARTS_DIR = os.getenv("CHARTS_DIR", "/Users/isaac/Desktop/Projects/Divergence_Scanner/divergence_charts")
-DISCORD_WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL", "")
+# Configuration - get from config file with environment variable fallbacks
+notifications_config = config.get_notifications_config()
+CHARTS_DIR = notifications_config.get('charts_directory', os.getenv("CHARTS_DIR", "/Users/isaac/Desktop/Projects/Divergence_Scanner/divergence_charts"))
+DISCORD_WEBHOOK_URL = notifications_config.get('discord_webhook_url', os.getenv("DISCORD_WEBHOOK_URL", ""))
 
 class DivergenceNotifier:
     def __init__(self, charts_dir=CHARTS_DIR, webhook_url=DISCORD_WEBHOOK_URL):
