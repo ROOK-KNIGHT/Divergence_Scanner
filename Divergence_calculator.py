@@ -973,7 +973,7 @@ class DivergenceScanner:
                         candles_diff = time_diff.total_seconds() / (5 * 60)  # 5-minute candles
                         
                         if candles_diff <= 30:
-                            logger.info(f"Long setup qualified for {symbol}: RSI={current_rsi:.1f}, Hidden bullish divergence within {candles_diff:.0f} candles")
+                            logger.info(f"Long setup qualified for {symbol}: RSI={current_rsi_hourly:.1f}, Hidden bullish divergence within {candles_diff:.0f} candles")
                             return True
             
             # Check for qualifying short setups
