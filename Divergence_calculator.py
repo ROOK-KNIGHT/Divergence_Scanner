@@ -86,49 +86,13 @@ def get_next_interval(frequency=1):
 
 # Load symbols configuration
 symbols_config = config.get_symbols_config()
-SP500_SYMBOLS = symbols_config.get('sp500_top_50', [
-    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "META", "GOOG", "TSLA", "BRK.B", "UNH", 
-    "LLY", "JPM", "XOM", "V", "AVGO", "PG", "MA", "HD", "COST", "MRK", 
-    "CVX", "ABBV", "PEP", "KO", "ADBE", "WMT", "BAC", "CRM", "MCD", "ABT", 
-    "ACN", "LIN", "CSCO", "AMD", "TMO", "CMCSA", "ORCL", "NKE", "DHR", "PFE", 
-    "INTC", "PM", "NFLX", "WFC", "TXN", "VZ", "COP", "IBM", "QCOM", "UPS"
-])
 
-# Include futures symbols for comprehensive market analysis
-FUTURES_SYMBOLS = symbols_config.get('futures', ['/ES', '/NQ', '/RTY', '/YM', '/GC', '/CL'])
+# Get comprehensive futures symbols from config
+FUTURES_SYMBOLS = symbols_config.get('futures', [])
 
-# Combine both lists
-SYMBOLS = FUTURES_SYMBOLS + SP500_SYMBOLS
+# Use only futures symbols (no stocks)
+SYMBOLS = FUTURES_SYMBOLS
 
-# Add function to dynamically fetch S&P 500 symbols
-def get_sp500_symbols():
-    """
-    Dynamically fetch S&P 500 symbols from Wikipedia.
-    Returns a list of symbols.
-    """
-    dynamic_config = symbols_config.get('dynamic_sp500', {})
-    
-    if not dynamic_config.get('enabled', True):
-        logger.info("Dynamic S&P 500 fetching is disabled, using static list")
-        return SP500_SYMBOLS
-    
-    try:
-        url = dynamic_config.get('url', "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")
-        tables = pd.read_html(url)
-        sp500_table = tables[0]
-        symbols = sp500_table['Symbol'].tolist()
-        # Clean up symbols (remove dots, etc.)
-        symbols = [symbol.replace('.', '-') for symbol in symbols]
-        logger.info(f"Successfully fetched {len(symbols)} S&P 500 symbols")
-        return symbols
-    except Exception as e:
-        logger.error(f"Error fetching S&P 500 symbols: {str(e)}")
-        # Fallback to static list if unable to fetch
-        if dynamic_config.get('fallback_to_static', True):
-            logger.info(f"Using static list of {len(SP500_SYMBOLS)} top S&P 500 symbols")
-            return SP500_SYMBOLS
-        else:
-            return []
 
 # Load market configuration
 market_config = config.get_market_config()
@@ -262,8 +226,9 @@ class DivergenceScanner:
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df_indicators[col] = df_indicators[col].astype(float)
             
-        # Calculate RSI using hourly aggregated data
-        df_indicators['rsi'] = self.calculate_hourly_rsi(df_indicators)
+        # Calculate both 5-minute and hourly RSI
+        df_indicators['rsi'] = talib.RSI(df_indicators['close'].values, timeperiod=RSI_PERIOD)  # 5-minute RSI for divergences
+        df_indicators['rsi_hourly'] = self.calculate_hourly_rsi(df_indicators)  # Hourly RSI for filtering
         
         # Calculate AD (Accumulation/Distribution) Line
         df_indicators['ad'] = talib.AD(
@@ -990,11 +955,11 @@ class DivergenceScanner:
         - Hidden divergence: where price makes LH and RSI makes HH (max 30 candle)
         """
         try:
-            # Get current RSI value
-            current_rsi = df_with_swings['rsi'].iloc[-1]
+            # Get current hourly RSI value for filtering (broader trend context)
+            current_rsi_hourly = df_with_swings['rsi_hourly'].iloc[-1]
             
             # Check for qualifying long setups
-            if current_rsi > 60:
+            if current_rsi_hourly > 60:
                 # Check for hidden bullish divergence
                 if (divergence_results.get("rsi_divergences", {}).get("bullish", {}).get("hidden", False)):
                     # Verify it's within the last 30 candles
@@ -1012,7 +977,7 @@ class DivergenceScanner:
                             return True
             
             # Check for qualifying short setups
-            if current_rsi < 40:
+            if current_rsi_hourly < 40:
                 # Check for hidden bearish divergence
                 if (divergence_results.get("rsi_divergences", {}).get("bearish", {}).get("hidden", False)):
                     # Verify it's within the last 30 candles
@@ -1026,11 +991,11 @@ class DivergenceScanner:
                         candles_diff = time_diff.total_seconds() / (5 * 60)  # 5-minute candles
                         
                         if candles_diff <= 30:
-                            logger.info(f"Short setup qualified for {symbol}: RSI={current_rsi:.1f}, Hidden bearish divergence within {candles_diff:.0f} candles")
+                            logger.info(f"Short setup qualified for {symbol}: RSI={current_rsi_hourly:.1f}, Hidden bearish divergence within {candles_diff:.0f} candles")
                             return True
             
             # Log why notification was not sent
-            logger.info(f"Notification criteria not met for {symbol}: RSI={current_rsi:.1f}, "
+            logger.info(f"Notification criteria not met for {symbol}: RSI={current_rsi_hourly:.1f}, "
                        f"Hidden bullish: {divergence_results.get('rsi_divergences', {}).get('bullish', {}).get('hidden', False)}, "
                        f"Hidden bearish: {divergence_results.get('rsi_divergences', {}).get('bearish', {}).get('hidden', False)}")
             
@@ -1341,36 +1306,11 @@ class DivergenceScanner:
 
     def run_scanner(self):
         """
-        Main scanner loop to continuously check all symbols using parallel processing.
+        Main scanner loop to continuously check all futures symbols using parallel processing.
         """
-        logger.info("Starting parallel divergence scanner for S&P 500 stocks and futures...")
+        logger.info("Starting parallel divergence scanner for futures contracts...")
         logger.info(f"Using {MAX_WORKERS} parallel workers for scanning")
-        
-        # Try to dynamically get the S&P 500 symbols, otherwise use the predefined list
-        try:
-            sp500_symbols = get_sp500_symbols()
-            if len(sp500_symbols) > 50:  # Sanity check that we got a good list
-                # Update SYMBOLS list but keep the futures first
-                global SYMBOLS
-                SYMBOLS = FUTURES_SYMBOLS + sp500_symbols
-                logger.info(f"Updated symbols list with {len(SYMBOLS)} symbols")
-                
-                # Initialize any new symbols in last_signal_time
-                for symbol in SYMBOLS:
-                    if symbol not in last_signal_time:
-                        last_signal_time[symbol] = {}
-                        # RSI divergences
-                        for direction in ["bullish", "bearish"]:
-                            for strength in ["strong", "medium", "weak", "hidden"]:
-                                last_signal_time[symbol][f"{direction}_rsi_{strength}"] = 0
-                        
-                        # AD Volume divergences
-                        for direction in ["bullish", "bearish"]:
-                            for strength in ["strong", "medium", "weak", "hidden"]:
-                                last_signal_time[symbol][f"{direction}_adv_{strength}"] = 0
-        except Exception as e:
-            logger.error(f"Error updating S&P 500 symbols: {e}")
-            # Continue with the predefined list
+        logger.info(f"Scanning {len(SYMBOLS)} futures symbols: {', '.join(SYMBOLS[:10])}{'...' if len(SYMBOLS) > 10 else ''}")
         
         while not self.stop_event.is_set():
             try:

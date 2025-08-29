@@ -131,73 +131,65 @@ market:
 # SYMBOLS CONFIGURATION
 # =============================================================================
 symbols:
-  # Futures symbols for comprehensive market analysis
+  # Comprehensive futures symbols from CBOT, CME, COMEX, NYMEX
   futures:
-    - "/ES"   # S&P 500 E-mini
-    - "/NQ"   # NASDAQ 100 E-mini
-    - "/RTY"  # Russell 2000 E-mini
-    - "/YM"   # Dow Jones E-mini
-    - "/GC"   # Gold
-    - "/CL"   # Crude Oil
+    # Equity Futures
+    - "/ES"   # E-mini S&P 500 (CME)
+    - "/NKD"  # Nikkei NKD (CME)
+    - "/NQ"   # E-mini NASDAQ 100 (CME)
+    - "/YM"   # Mini-DOW (CBOT)
+    - "/EMD"  # E-mini Midcap 400 (CME)
+    - "/RTY"  # Russell 2000 (CME)
     
-  # Top S&P 500 symbols (fallback list if dynamic fetch fails)
-  sp500_top_50:
-    - "AAPL"
-    - "MSFT"
-    - "AMZN"
-    - "NVDA"
-    - "GOOGL"
-    - "META"
-    - "GOOG"
-    - "TSLA"
-    - "BRK.B"
-    - "UNH"
-    - "LLY"
-    - "JPM"
-    - "XOM"
-    - "V"
-    - "AVGO"
-    - "PG"
-    - "MA"
-    - "HD"
-    - "COST"
-    - "MRK"
-    - "CVX"
-    - "ABBV"
-    - "PEP"
-    - "KO"
-    - "ADBE"
-    - "WMT"
-    - "BAC"
-    - "CRM"
-    - "MCD"
-    - "ABT"
-    - "ACN"
-    - "LIN"
-    - "CSCO"
-    - "AMD"
-    - "TMO"
-    - "CMCSA"
-    - "ORCL"
-    - "NKE"
-    - "DHR"
-    - "PFE"
-    - "INTC"
-    - "PM"
-    - "NFLX"
-    - "WFC"
-    - "TXN"
-    - "VZ"
-    - "COP"
-    - "IBM"
-    - "QCOM"
-    - "UPS"
+    # Currency Futures
+    - "/6A"   # Australian Dollar (CME)
+    - "/6B"   # British Pound (CME)
+    - "/6C"   # Canadian Dollar (CME)
+    - "/6E"   # Euro FX (CME)
+    - "/6J"   # Japanese Yen (CME)
+    - "/6S"   # Swiss Franc (CME)
+    - "/6N"   # New Zealand Dollar (CME)
     
-  # Dynamic S&P 500 fetching settings
-  dynamic_sp500:
-    enabled: true
-    url: "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-    fallback_to_static: true
+    # Agricultural Futures
+    - "/HE"   # Lean Hogs (CME)
+    - "/LE"   # Live Cattle (CME)
+    - "/GF"   # Feeder Cattle (CME)
+    - "/ZC"   # Corn (CBOT)
+    - "/ZW"   # Wheat (CBOT)
+    - "/ZS"   # Soybeans (CBOT)
+    - "/ZM"   # Soybean Meal (CBOT)
+    - "/ZL"   # Soybean Oil (CBOT)
+    
+    # Energy Futures
+    - "/CL"   # Crude Oil (NYMEX)
+    - "/QM"   # Mini Crude Oil (NYMEX)
+    - "/NG"   # Natural Gas (NYMEX)
+    - "/QG"   # E-mini Natural Gas (NYMEX)
+    - "/HO"   # Heating Oil (NYMEX)
+    - "/RB"   # New York Harbor (NYMEX)
+    
+    # Metal Futures
+    - "/GC"   # Gold (COMEX)
+    - "/SI"   # Silver (COMEX)
+    - "/HG"   # Copper (COMEX)
+    - "/PL"   # Platinum (NYMEX)
+    - "/PA"   # Palladium (NYMEX)
+    - "/QI"   # miNY Silver (COMEX)
+    - "/QO"   # miNY Gold (COMEX)
+    
+    # Micro Futures
+    - "/MES"  # Micro E-Mini S&P 500 (CME)
+    - "/MYM"  # Micro E-Mini Dow Jones (CME)
+    - "/MNQ"  # Micro E-Mini Nasdaq-100 (CME)
+    - "/M2K"  # Micro E-Mini Russell 2000 (CME)
+    - "/MGC"  # E-Micro Gold (COMEX)
+    - "/M6A"  # E-Micro AUD/USD (CME)
+    - "/M6E"  # E-Micro EUR/USD (CME)
+    - "/MCL"  # Micro Crude Oil (NYMEX)
+    
+    # Cryptocurrencies
+    - "/MBT"  # Micro Bitcoin (CME)
+    - "/MET"  # Micro Ethereum (CME)
 
 # =============================================================================
 # NOTIFICATION SETTINGS
