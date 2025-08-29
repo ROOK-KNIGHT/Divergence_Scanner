@@ -837,7 +837,7 @@ class DivergenceScanner:
                                     reward_risk_ratio = (take_profit - entry_price) / risk_amount if risk_amount > 0 else 0
                                     
                                     # Only add trade signal if reward:risk ratio meets our criteria
-                                    if reward_risk_ratio >= RISK_REWARD_RATIO and (current_time - swing_time) <= max_age:
+                                    if reward_risk_ratio >= RISK_REWARD_RATIO and (current_time - idx2) <= max_age:
                                         divergences["trade_signals"]["bullish_adv_strong"] = {
                                             "signal_type": "BUY",
                                             "entry_price": entry_price,
@@ -977,6 +977,69 @@ class DivergenceScanner:
                 "trade_signals": {}
             }
 
+    def should_send_notification(self, symbol, divergence_results, df_with_swings):
+        """
+        Check if we should send a notification based on specific criteria:
+        
+        Long setup:
+        - HR RSI >60 (HTF)
+        - Hidden divergence: where price makes HL and RSI makes LL (max 30 candle)
+        
+        Short setup:
+        - HR RSI <40 (HTF)
+        - Hidden divergence: where price makes LH and RSI makes HH (max 30 candle)
+        """
+        try:
+            # Get current RSI value
+            current_rsi = df_with_swings['rsi'].iloc[-1]
+            
+            # Check for qualifying long setups
+            if current_rsi > 60:
+                # Check for hidden bullish divergence
+                if (divergence_results.get("rsi_divergences", {}).get("bullish", {}).get("hidden", False)):
+                    # Verify it's within the last 30 candles
+                    if "bullish_rsi_hidden" in divergence_results.get("details", {}):
+                        details = divergence_results["details"]["bullish_rsi_hidden"]
+                        second_swing_time = details['second_swing']['date']
+                        current_time = df_with_swings.index[-1]
+                        
+                        # Calculate time difference in candles (assuming 5-minute intervals)
+                        time_diff = current_time - second_swing_time
+                        candles_diff = time_diff.total_seconds() / (5 * 60)  # 5-minute candles
+                        
+                        if candles_diff <= 30:
+                            logger.info(f"Long setup qualified for {symbol}: RSI={current_rsi:.1f}, Hidden bullish divergence within {candles_diff:.0f} candles")
+                            return True
+            
+            # Check for qualifying short setups
+            if current_rsi < 40:
+                # Check for hidden bearish divergence
+                if (divergence_results.get("rsi_divergences", {}).get("bearish", {}).get("hidden", False)):
+                    # Verify it's within the last 30 candles
+                    if "bearish_rsi_hidden" in divergence_results.get("details", {}):
+                        details = divergence_results["details"]["bearish_rsi_hidden"]
+                        second_swing_time = details['second_swing']['date']
+                        current_time = df_with_swings.index[-1]
+                        
+                        # Calculate time difference in candles (assuming 5-minute intervals)
+                        time_diff = current_time - second_swing_time
+                        candles_diff = time_diff.total_seconds() / (5 * 60)  # 5-minute candles
+                        
+                        if candles_diff <= 30:
+                            logger.info(f"Short setup qualified for {symbol}: RSI={current_rsi:.1f}, Hidden bearish divergence within {candles_diff:.0f} candles")
+                            return True
+            
+            # Log why notification was not sent
+            logger.info(f"Notification criteria not met for {symbol}: RSI={current_rsi:.1f}, "
+                       f"Hidden bullish: {divergence_results.get('rsi_divergences', {}).get('bullish', {}).get('hidden', False)}, "
+                       f"Hidden bearish: {divergence_results.get('rsi_divergences', {}).get('bearish', {}).get('hidden', False)}")
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Error checking notification criteria for {symbol}: {str(e)}")
+            return False
+
     def scan_symbol(self, symbol):
         """
         Scan a single symbol for divergences with classification by strength.
@@ -1054,10 +1117,13 @@ class DivergenceScanner:
                             last_signal_time[symbol][div_key] = current_time
                             logger.info(f"New {div_key} divergence detected on {symbol}")
             
-            # Send notifications for any new divergences found
-            if new_divergences_found:
+            # Check if we should send notifications based on specific criteria
+            should_notify = self.should_send_notification(symbol, divergence_results, df_with_swings)
+            
+            # Send notifications only for qualifying divergences
+            if new_divergences_found and should_notify:
                 try:
-                    logger.info(f"Sending Discord notification for new divergences on {symbol}")
+                    logger.info(f"Sending Discord notification for qualifying divergences on {symbol}")
                     notifier = DivergenceNotifier()
                     notifier.process_results({symbol: {
                         "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -1070,6 +1136,8 @@ class DivergenceScanner:
                     logger.error(f"Error sending Discord notification for {symbol}: {str(e)}")
                     import traceback
                     logger.error(f"Notification error traceback: {traceback.format_exc()}")
+            elif new_divergences_found and not should_notify:
+                logger.info(f"Divergences found for {symbol} but do not meet notification criteria (RSI thresholds or divergence type)")
             
             # Check for new trade signals and track them
             if "trade_signals" in divergence_results and divergence_results["trade_signals"]:
