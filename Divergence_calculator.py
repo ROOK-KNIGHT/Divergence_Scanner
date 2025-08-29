@@ -262,8 +262,8 @@ class DivergenceScanner:
         for col in ['open', 'high', 'low', 'close', 'volume']:
             df_indicators[col] = df_indicators[col].astype(float)
             
-        # Calculate RSI
-        df_indicators['rsi'] = talib.RSI(df_indicators['close'].values, timeperiod=RSI_PERIOD)
+        # Calculate RSI using hourly aggregated data
+        df_indicators['rsi'] = self.calculate_hourly_rsi(df_indicators)
         
         # Calculate AD (Accumulation/Distribution) Line
         df_indicators['ad'] = talib.AD(
@@ -337,6 +337,48 @@ class DivergenceScanner:
         df_indicators['volatility_ratio'] = (df_indicators['bb_upper'] - df_indicators['bb_lower']) / df_indicators['bb_middle']
         
         return df_indicators
+
+    def calculate_hourly_rsi(self, df):
+        """
+        Calculate RSI using hourly aggregated data from 5-minute data.
+        This provides a smoother RSI signal by using hourly candles.
+        """
+        try:
+            # Create a copy to avoid modifying the original dataframe
+            df_hourly_calc = df.copy()
+            
+            # Resample 5-minute data to hourly
+            # Use OHLC aggregation for price data and sum for volume
+            hourly_data = df_hourly_calc.resample('1h').agg({
+                'open': 'first',
+                'high': 'max', 
+                'low': 'min',
+                'close': 'last',
+                'volume': 'sum'
+            }).dropna()
+            
+            # Calculate RSI on hourly data
+            if len(hourly_data) >= RSI_PERIOD:
+                hourly_rsi = talib.RSI(hourly_data['close'].values, timeperiod=RSI_PERIOD)
+                
+                # Create a series with hourly RSI values
+                hourly_rsi_series = pd.Series(hourly_rsi, index=hourly_data.index)
+                
+                # Forward fill the hourly RSI values to match the 5-minute timeframe
+                # This means each 5-minute bar within an hour gets the same RSI value
+                rsi_reindexed = hourly_rsi_series.reindex(df.index, method='ffill')
+                
+                logger.info(f"Calculated hourly RSI: {len(hourly_data)} hourly bars -> {len(rsi_reindexed)} 5-minute bars")
+                return rsi_reindexed
+            else:
+                logger.warning(f"Not enough hourly data points ({len(hourly_data)}) for RSI calculation (need {RSI_PERIOD})")
+                # Fallback to regular 5-minute RSI if not enough hourly data
+                return talib.RSI(df['close'].values, timeperiod=RSI_PERIOD)
+                
+        except Exception as e:
+            logger.error(f"Error calculating hourly RSI: {str(e)}")
+            # Fallback to regular 5-minute RSI on error
+            return talib.RSI(df['close'].values, timeperiod=RSI_PERIOD)
 
     def identify_market_session(self, datetime_index):
         """
