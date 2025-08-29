@@ -295,12 +295,53 @@ class DivergenceNotifier:
             ax_indicator.grid(True, alpha=0.3)
             ax_indicator.legend(loc='upper left')
 
-            # =================== VOLUME PANEL ===================
-            for i in range(len(plot_df)):
-                color = 'green' if plot_df['close'].iloc[i] >= plot_df['open'].iloc[i] else 'red'
-                ax_volume.bar(i, plot_df['volume'].iloc[i], color=color, alpha=0.7, width=0.8)
-            volume_ma = plot_df['volume'].rolling(window=20).mean()
-            ax_volume.plot(range(len(volume_ma)), volume_ma, color='blue', linewidth=1.5, label='Volume MA (20)')
+            # =================== HOURLY RSI PANEL ===================
+            # Plot hourly RSI with threshold validation
+            if 'rsi_hourly' in plot_df.columns:
+                ax_volume.plot(range(len(plot_df)), plot_df['rsi_hourly'], color='orange', linewidth=2, label='Hourly RSI')
+                
+                # Add threshold lines for notification criteria
+                ax_volume.axhline(y=60, color='red', linestyle='-', alpha=0.7, linewidth=2, label='Long Setup Threshold (>60)')
+                ax_volume.axhline(y=40, color='green', linestyle='-', alpha=0.7, linewidth=2, label='Short Setup Threshold (<40)')
+                
+                # Fill areas above 60 and below 40 to highlight notification zones
+                ax_volume.axhspan(60, 100, color='red', alpha=0.1, label='Long Setup Zone')
+                ax_volume.axhspan(0, 40, color='green', alpha=0.1, label='Short Setup Zone')
+                
+                # Get current hourly RSI value
+                current_hourly_rsi = plot_df['rsi_hourly'].iloc[-1]
+                
+                # Add annotation for current hourly RSI value
+                ax_volume.annotate(f"Current Hourly RSI: {current_hourly_rsi:.1f}", 
+                                 xy=(len(plot_df)-1, current_hourly_rsi),
+                                 xytext=(-80, 10), textcoords='offset points',
+                                 bbox=dict(boxstyle="round,pad=0.3", fc="yellow", ec="black", alpha=0.8),
+                                 fontsize=10, fontweight='bold',
+                                 arrowprops=dict(arrowstyle="->", color="black"))
+                
+                # Highlight notification qualification
+                if current_hourly_rsi > 60:
+                    qualification_text = "✅ QUALIFIED for Long Setups (RSI > 60)"
+                    qualification_color = "red"
+                elif current_hourly_rsi < 40:
+                    qualification_text = "✅ QUALIFIED for Short Setups (RSI < 40)"
+                    qualification_color = "green"
+                else:
+                    qualification_text = "❌ NOT QUALIFIED (RSI between 40-60)"
+                    qualification_color = "gray"
+                
+                ax_volume.text(0.02, 0.95, qualification_text, transform=ax_volume.transAxes,
+                             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=qualification_color, alpha=0.9),
+                             fontsize=10, fontweight='bold', color=qualification_color,
+                             verticalalignment='top')
+                
+                ax_volume.set_ylim(0, 100)
+            else:
+                # Fallback to regular RSI if hourly RSI not available
+                ax_volume.plot(range(len(plot_df)), plot_df['rsi'], color='purple', linewidth=2, label='RSI (5-min)')
+                ax_volume.axhline(y=70, color='red', linestyle='-', alpha=0.5)
+                ax_volume.axhline(y=30, color='green', linestyle='-', alpha=0.5)
+                ax_volume.set_ylim(0, 100)
 
             if trade_signal:
                 try:
@@ -308,20 +349,35 @@ class DivergenceNotifier:
                 except ValueError:
                     signal_idx = idx2_plot
                 if 0 <= signal_idx < len(plot_df):
-                    ax_volume.axvline(x=signal_idx, color='blue', linestyle='--', alpha=0.7)
-                    ax_volume.annotate("Signal", (signal_idx, plot_df['volume'].iloc[signal_idx]),
+                    ax_volume.axvline(x=signal_idx, color='blue', linestyle='--', alpha=0.7, linewidth=2)
+                    signal_rsi = plot_df['rsi_hourly'].iloc[signal_idx] if 'rsi_hourly' in plot_df.columns else plot_df['rsi'].iloc[signal_idx]
+                    ax_volume.annotate("Signal", (signal_idx, signal_rsi),
                                         xytext=(0, 10), textcoords='offset points', color='blue',
                                         arrowprops=dict(arrowstyle="->", color="blue"))
 
-            ax_volume.set_ylabel('Volume')
+            ax_volume.set_ylabel('Hourly RSI')
             ax_volume.grid(True, alpha=0.3)
-            ax_volume.legend(loc='upper left')
+            ax_volume.legend(loc='upper left', fontsize=8)
 
-            # Format the x-axis with date labels.
-            date_ticks = range(0, len(plot_df), max(1, len(plot_df) // 8))
-            date_labels = [plot_df.index[i].strftime('%Y-%m-%d %H:%M') for i in date_ticks]
+            # Format the x-axis with cleaner date labels
+            # Use fewer ticks for cleaner appearance
+            num_ticks = min(6, len(plot_df))  # Maximum 6 ticks for cleaner look
+            date_ticks = range(0, len(plot_df), max(1, len(plot_df) // num_ticks))
+            
+            # Format date labels based on timeframe
+            date_labels = []
+            for i in date_ticks:
+                dt = plot_df.index[i]
+                # For intraday data, show date and time more cleanly
+                if dt.hour == 0 and dt.minute == 0:
+                    # Show just date for midnight
+                    date_labels.append(dt.strftime('%m/%d'))
+                else:
+                    # Show time for intraday
+                    date_labels.append(dt.strftime('%m/%d\n%H:%M'))
+            
             ax_volume.set_xticks(date_ticks)
-            ax_volume.set_xticklabels(date_labels, rotation=45)
+            ax_volume.set_xticklabels(date_labels, rotation=0, ha='center')
 
             if trade_signal:
                 fig.suptitle(f"{symbol} - {details['type']} - {trade_signal['signal_type']} Signal", fontsize=16)
